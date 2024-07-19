@@ -1,0 +1,200 @@
+!pip install numpy tensorflow nltk scikit-learn
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras import layers, models
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+import json
+import random
+import logging
+
+# Data
+data = {
+    "intents": [
+        {
+            "tag": "greeting",
+            "patterns": ["Good morning", "Hi", "Hello", "Hey there"],
+            "responses": ["Hello!", "Hi there!", "Greetings!", "How can I assist you today?"]
+        },
+        {
+            "tag": "depression",
+            "patterns": ["I feel sad", "I am depressed", "I'm feeling down", "Life seems meaningless", "I'm so unhappy"],
+            "responses": [
+                "I'm sorry to hear that. Can you tell me more about what's been going on?",
+                "It sounds like you're going through a tough time.",
+                "I'm here to listen and help. Please share more about what you're feeling."
+            ]
+        },
+        {
+            "tag": "suicidal_thoughts",
+            "patterns": ["I want to end my life", "I am having suicidal thoughts", "I feel like giving up", "Life isn't worth living", "I can't go on like this"],
+            "responses": [
+                "I'm really sorry you're feeling this way, but I'm not equipped to help. Please contact a mental health professional or a crisis hotline immediately.",
+                "Please reach out to a trusted person or a professional who can help you.",
+                "Your life matters. Please talk to someone who can offer you the support you need."
+            ]
+        },
+        {
+            "tag": "loneliness",
+            "patterns": ["I feel lonely", "I don't have anyone to talk to", "I need someone to be with", "I'm all alone"],
+            "responses": [
+                "I understand how loneliness can feel overwhelming. You're not alone in feeling this way.",
+                "It's okay to feel lonely sometimes. Is there something specific you'd like to talk about?",
+                "Reach out to friends, family, or a counselor. Sometimes talking helps."
+            ]
+        },
+        {
+            "tag": "stress_management",
+            "patterns": ["I'm feeling stressed", "I can't relax", "Everything is too much", "I'm under a lot of pressure"],
+            "responses": [
+                "Let's work on ways to manage your stress. Deep breathing or taking a walk can help.",
+                "It's important to take breaks and practice self-care. What usually helps you relax?",
+                "Managing stress is important for your well-being. We can explore techniques together."
+            ]
+        },
+        {
+            "tag": "relationship_issues",
+            "patterns": ["My partner and I are fighting", "I'm having problems with my relationship", "I don't know how to communicate with my partner"],
+            "responses": [
+                "Relationships can be challenging. Communication is key. Would you like to talk about what's been happening?",
+                "It might help to express your feelings openly with your partner. Have you tried discussing this with them?",
+                "It's normal to face difficulties in relationships. We can explore ways to improve communication."
+            ]
+        },
+        {
+            "tag": "academic_pressure",
+            "patterns": ["I'm stressed about exams", "I feel overwhelmed with my studies", "I'm afraid I won't pass my classes"],
+            "responses": [
+                "Academic pressure can be tough. Remember to take breaks and ask for help when you need it.",
+                "Studying can be stressful, but you're capable of handling it. Would you like to talk about what's challenging you?",
+                "It's okay to feel overwhelmed. Let's break down your workload and prioritize."
+            ]
+        },
+        {
+            "tag": "self_esteem",
+            "patterns": ["I feel worthless", "I don't like myself", "I'm not good enough", "I hate myself"],
+            "responses": [
+                "You are valuable and worthy of respect. Let's explore ways to improve your self-esteem.",
+                "It's important to be kind to yourself. What are some positive things about yourself?",
+                "Remember that your worth isn't defined by your mistakes or flaws."
+            ]
+        },
+        {
+            "tag": "motivation",
+            "patterns": ["I lack motivation", "I don't feel like doing anything", "I'm unmotivated to start anything"],
+            "responses": [
+                "Finding motivation can be challenging. Let's break down your goals into smaller, manageable tasks.",
+                "Sometimes taking a small step forward can help build momentum. What's one thing you can do right now?",
+                "Motivation often comes and goes. It's okay to take breaks and refocus."
+            ]
+        },
+        {
+            "tag": "career_advice",
+            "patterns": ["I'm unsure about my career", "I don't know what job to pursue", "I'm unhappy with my current job"],
+            "responses": [
+                "Choosing a career path can be daunting. What are your interests and strengths?",
+                "Exploring different career options can help you find a path that aligns with your goals. Have you considered any specific industries?",
+                "It's important to find a career that brings you fulfillment. Let's discuss your career aspirations."
+            ]
+        },
+        {
+            "tag": "anxiety",
+            "patterns": ["I feel anxious", "I'm having a panic attack", "I can't stop worrying"],
+            "responses": [
+                "Anxiety can be overwhelming. Let's try some grounding exercises to help you calm down.",
+                "Remember to take slow, deep breaths. Anxiety can feel intense but it will pass.",
+                "Seeking support from a counselor or therapist can help you manage anxiety more effectively."
+            ]
+        }
+    ]
+}
+
+# Save data to a JSON file
+with open("data.json", "w") as file:
+    json.dump(data, file)
+
+nltk.download('punkt')
+nltk.download('stopwords')
+
+def preprocess_data(data):
+    le = LabelEncoder()
+    patterns = []
+    tags = []
+    responses = {}
+
+    for intent in data["intents"]:
+        for pattern in intent["patterns"]:
+            tokens = word_tokenize(pattern.lower())
+            patterns.append(tokens)
+            tags.append(intent["tag"])
+
+        responses[intent["tag"]] = intent["responses"]
+
+    return patterns, tags, responses
+
+patterns, tags, responses = preprocess_data(data)
+
+# Create a tokenizer and fit on the patterns
+tokenizer = tf.keras.preprocessing.text.Tokenizer(oov_token="<OOV>")
+tokenizer.fit_on_texts([' '.join(pattern) for pattern in patterns])
+word_index = tokenizer.word_index
+
+# Convert patterns to sequences
+sequences = tokenizer.texts_to_sequences([' '.join(pattern) for pattern in patterns])
+
+# Pad the sequences
+padded_sequences = tf.keras.preprocessing.sequence.pad_sequences(sequences, padding='post')
+
+# Encode the labels
+le = LabelEncoder()
+labels = le.fit_transform(tags)
+
+# Split the data
+X_train, X_test, y_train, y_test = train_test_split(padded_sequences, labels, test_size=0.2)
+
+# Define the model
+model = models.Sequential([
+    layers.Embedding(input_dim=len(word_index) + 1, output_dim=16, input_length=padded_sequences.shape[1]),
+    layers.GlobalAveragePooling1D(),
+    layers.Dense(16, activation='relu'),
+    layers.Dense(len(set(tags)), activation='softmax')
+])
+
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+# Train the model
+model.fit(X_train, y_train, epochs=30, validation_data=(X_test, y_test))
+
+def predict_intent(text):
+    tokens = word_tokenize(text.lower())
+    sequence = tokenizer.texts_to_sequences([' '.join(tokens)])
+    padded_sequence = tf.keras.preprocessing.sequence.pad_sequences(sequence, maxlen=padded_sequences.shape[1], padding='post')
+    prediction = model.predict(padded_sequence)
+    tag = le.inverse_transform([np.argmax(prediction)])
+    return tag[0]
+
+def get_response(intent):
+    return random.choice(responses[intent])
+
+def log_interaction(user_input, intent):
+    logging.info(f"User Input: {user_input} | Predicted Intent: {intent}")
+
+def chatbot_response(text):
+    intent = predict_intent(text)
+    response = get_response(intent)
+    log_interaction(text, intent)
+    return response
+
+# Set up logging
+logging.basicConfig(filename='chatbot.log', level=logging.INFO)
+
+# Chat loop
+while True:
+    user_input = input("You: ")
+    if user_input.lower() in ["exit", "quit"]:
+        break
+    response = chatbot_response(user_input)
+    print(f"Bot: {response}")
